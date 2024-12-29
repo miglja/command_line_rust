@@ -51,6 +51,7 @@ fn run(mut args: Args) -> Result<()> {
     let mut word_total = 0;
     let mut byte_total = 0;
     let mut char_total = 0;
+
     for filename in &args.files {
         let mut line_count = 0;
         let mut word_count = 0;
@@ -61,38 +62,47 @@ fn run(mut args: Args) -> Result<()> {
             Err(err) => eprintln!("{filename}: {err}"),
             Ok(mut current_file) => {
                 let mut line = String::new();
-                while let Ok(n) = current_file.read_line(&mut line) {
-                    if n == 0 { break; }
+                // using read_line to allow an accurate byte and character
+                // count, since it preserves line endings.
+                while let Ok(num_bytes) = current_file.read_line(&mut line) {
+                    // break out of loop at end of file
+                    if num_bytes == 0 { 
+                        break;
+                    }
                     line_count += 1;
-                    line_total += 1;
+                    // return value of read_line is number of bytes read, so
+                    // we can use it as the count here.
                     if args.bytes {
-                        byte_count += line.len();
-                        byte_total += line.len();
+                        byte_count += num_bytes;
                     }
                     if args.words {
-                        let words = line.split_whitespace().collect::<Vec<&str>>().len();
+                        // split_whitespace rather than split ensures all 
+                        //whitespace is treated as a separator.
+                        let words = line.split_whitespace().count();
                         word_count += words;
-                        word_total += words;
                     }
                     if args.chars {
-                        let chars = line.chars().collect::<Vec<_>>().len();
+                        let chars = line.chars().count();
                         char_count += chars;
-                        char_total += chars;
                     }
 
                     line.clear();
                 }
                 if args.lines {
                     print!("{:>8}", line_count);
+                    line_total += line_count;
                 }
                 if args.words {
                     print!("{:>8}", word_count);
+                    word_total += word_count;
                 }
                 if args.bytes {
                     print!("{:>8}", byte_count);
+                    byte_total += byte_count;
                 }
                 if args.chars {
                     print!("{:>8}", char_count);
+                    char_total += char_count;
                 }
                 if filename != "-" {
                     println!(" {}", filename);
