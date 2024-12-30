@@ -9,9 +9,7 @@ use std::io::{self, BufRead, BufReader};
 /// Rust version of wc
 struct Args {
     /// Input file(s)
-    #[arg(value_name("FILE"),
-          default_value("-")
-    )]
+    #[arg(value_name("FILE"), default_value("-"))]
     files: Vec<String>,
     /// Show line count
     #[arg(short('l'), long,)]
@@ -27,6 +25,14 @@ struct Args {
     chars: bool,
 }
 
+#[derive(Default, Debug, PartialEq)]
+struct FileInfo {
+    line_count: usize,
+    word_count: usize,
+    byte_count: usize,
+    char_count: usize,
+ }
+
 
 fn open(filename: &str) -> Result<Box<dyn BufRead>> {
     // Open stdin or a file for reading, depending on filename passed.
@@ -37,7 +43,54 @@ fn open(filename: &str) -> Result<Box<dyn BufRead>> {
 }
 
 
+fn counter(mut  filename: impl BufRead) -> Result<FileInfo> {
+    // read passed file and return a FileInfo struct containing the counts
+    // of the various file elements.
+
+    let mut line = String::new();
+    let mut file_counts = FileInfo{..Default::default()};
+
+    // using read_line to allow an accurate byte and character
+    // count, since it preserves line endings.
+    while let Ok(num_bytes) = filename.read_line(&mut line) {
+        // break out of loop at end of file
+        if num_bytes == 0 { 
+            break;
+        }
+
+        file_counts.line_count += 1;
+
+        // return value of read_line is number of bytes read, so
+        // we can use it as the count here.
+        file_counts.byte_count += num_bytes;
+
+        // split_whitespace rather than split ensures all 
+        //whitespace is treated as a separator.
+        file_counts.word_count += line.split_whitespace().count();
+
+        file_counts.char_count += line.chars().count();
+
+        line.clear();
+    }
+
+    Ok(file_counts)
+}
+
+
+fn format_output(count: usize, show: bool) -> std::string::String{
+    // format individual file element count for display in report or suppress
+    // it, depending on flag.
+    if show {
+        format!("{:>8}", count)
+    } else {
+        format!("")
+    }
+}
+
+
 fn run(mut args: Args) -> Result<()> {
+    // if the user doesn't set any flags, the default is to display 
+    // information on lines, words, and bytes.  Set flags accorddingly.
     if [args.lines, args.words, args.bytes, args.chars]
         .iter()
         .all(|v| *v == false)
@@ -47,85 +100,41 @@ fn run(mut args: Args) -> Result<()> {
             args.bytes = true;
         }
 
-    let mut line_total = 0;
-    let mut word_total = 0;
-    let mut byte_total = 0;
-    let mut char_total = 0;
+    let mut totals = FileInfo {..Default::default()};
 
     for filename in &args.files {
-        let mut line_count = 0;
-        let mut word_count = 0;
-        let mut byte_count = 0;
-        let mut char_count = 0;
         match open(&filename) {
             // If there is a problem opening the file, note it and move on.
             Err(err) => eprintln!("{filename}: {err}"),
-            Ok(mut current_file) => {
-                let mut line = String::new();
-                // using read_line to allow an accurate byte and character
-                // count, since it preserves line endings.
-                while let Ok(num_bytes) = current_file.read_line(&mut line) {
-                    // break out of loop at end of file
-                    if num_bytes == 0 { 
-                        break;
-                    }
-                    line_count += 1;
-                    // return value of read_line is number of bytes read, so
-                    // we can use it as the count here.
-                    if args.bytes {
-                        byte_count += num_bytes;
-                    }
-                    if args.words {
-                        // split_whitespace rather than split ensures all 
-                        //whitespace is treated as a separator.
-                        let words = line.split_whitespace().count();
-                        word_count += words;
-                    }
-                    if args.chars {
-                        let chars = line.chars().count();
-                        char_count += chars;
-                    }
+            Ok(current_file) => {
+                let current_counts: FileInfo = counter(current_file)?;
 
-                    line.clear();
-                }
-                if args.lines {
-                    print!("{:>8}", line_count);
-                    line_total += line_count;
-                }
-                if args.words {
-                    print!("{:>8}", word_count);
-                    word_total += word_count;
-                }
-                if args.bytes {
-                    print!("{:>8}", byte_count);
-                    byte_total += byte_count;
-                }
-                if args.chars {
-                    print!("{:>8}", char_count);
-                    char_total += char_count;
-                }
-                if filename != "-" {
-                    println!(" {}", filename);
-                } else {
-                    println!();
-                }
+                println!("{}{}{}{}{}", 
+                    format_output(current_counts.line_count, args.lines),
+                    format_output(current_counts.word_count, args.words),
+                    format_output(current_counts.byte_count, args.bytes),
+                    format_output(current_counts.char_count, args.chars),
+                    if filename == "-" {
+                        "".to_string()
+                    } else {
+                        format!(" {filename}")
+                    }
+                );
+
+                totals.line_count += current_counts.line_count;
+                totals.word_count += current_counts.word_count;
+                totals.byte_count += current_counts.byte_count;
+                totals.char_count += current_counts.char_count;
             },
         };
     }
     if args.files.len() > 1 {
-        if args.lines {
-            print!("{:>8}", line_total);
-        }
-        if args.words {
-            print!("{:>8}", word_total);
-        }
-        if args.bytes {
-            print!("{:>8}", byte_total);
-        }
-        if args.chars {
-            print!("{:>8}", char_total);
-        }
-        println!(" total");
+        println!("{}{}{}{} total", 
+            format_output(totals.line_count, args.lines),
+            format_output(totals.word_count, args.words),
+            format_output(totals.byte_count, args.bytes),
+            format_output(totals.char_count, args.chars),
+        );
     }
 
     Ok(())
